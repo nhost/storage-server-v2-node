@@ -1,4 +1,4 @@
-import AWS, { S3 } from "aws-sdk";
+import AWS from "aws-sdk";
 
 export function initClient() {
   return new AWS.S3({
@@ -11,7 +11,7 @@ export function initClient() {
   });
 }
 
-// export const client = initClient();
+export const client = initClient();
 
 export async function uploadObject(
   key: string,
@@ -20,7 +20,7 @@ export async function uploadObject(
 ): Promise<any> {
   // * Create or update the object
 
-  const client = initClient();
+  // const client = initClient();
 
   const upload_params = {
     Bucket: "nhost",
@@ -31,4 +31,19 @@ export async function uploadObject(
 
   const data = await client.upload(upload_params).promise();
   return data;
+}
+
+export async function downloadObject(key: string) {
+  const params = {
+    Bucket: "nhost",
+    Key: key,
+  };
+
+  const object = await client.getObject(params).promise();
+
+  if (!object.Body) {
+    throw new Error("Object not found");
+  }
+
+  return object;
 }

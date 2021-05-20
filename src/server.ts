@@ -3,11 +3,11 @@ import { applyMigrations } from "./utils/migrations";
 import fastifyMultipart from "fastify-multipart";
 import { v4 as uuidv4 } from "uuid";
 
-import { uploadObject } from "./utils/s3";
+import { uploadObject, downloadObject } from "./utils/s3";
 import { request } from "./utils/graphql-client";
 import { insertFile } from "./utils/graphql-queries";
 
-const server = fastify();
+const server = fastify({ trustProxy: true });
 
 server.register(fastifyMultipart);
 
@@ -24,20 +24,19 @@ server.post("/upload", async (req: any, res: any) => {
 
   // use specified filename from haders
   // or original filename
-  const filename = req.headers.filename || originalFilename;
+  const fileName = req.headers.filename || originalFilename;
 
-  // generate accessToken
-  const accessToken = uuidv4();
+  const fileSize = file._readableState.length;
 
   // add to `storage.files`
+  let dbRes: any;
   try {
-    await request(insertFile, {
+    dbRes = await request(insertFile, {
       object: {
-        access_token: accessToken,
-        filename,
+        name: fileName,
         mimetype,
-        size: 2,
-        uploaded_by_ip_address: "1.2.3.4",
+        size: fileSize,
+        uploaded_by_ip_address: req.ip,
       },
     });
   } catch (error) {
@@ -45,23 +44,61 @@ server.post("/upload", async (req: any, res: any) => {
     console.log("unable to insert file");
   }
 
+  const fileId = dbRes.insert_storage_files_one.id;
+
   // upload to S3
-  const key = `${accessToken}/${filename}`;
-  const uploadResult = await uploadObject(key, file, mimetype);
+  const pathname = `${fileId}/${fileName}`;
+  const uploadResult = await uploadObject(pathname, file, mimetype);
 
   console.log({ uploadResult });
 
-  res.code(200).send({ pong: "it worked 2!" });
+  res.code(200).send({ pathname, mimetype, size: fileSize });
 });
-server.get("/object/*", async (req: any, res: any) => {
-  console.log("get object");
-  console.log(req.params);
-  res.code(200).send({ pong: "get okok" });
+server.get("/file/*", async (req: any, res: any) => {
+  const pathname = req.params["*"];
+
+  console.log({ pathname });
+
+  const object = await downloadObject(pathname);
+
+  console.log(object);
+  // res.set('Content-Length', headObject.ContentLength?.toString())
+  res
+    .code(200)
+    .header("Content-Type", object.ContentType)
+    .header("Content-Length", object.ContentLength)
+    .header("Last-Modified", object.LastModified)
+    .header("ETag", object.ETag)
+    .send(object.Body);
+});
+
+server.get("/generate-signed-url/*", async (req: any, res: any) => {
+  const pathname = req.params["*"];
+  console.log({ pathname });
+  const [fileId, fileName] = pathname.split("/");
+  console.log({ fileId, fileName });
+
+  // see if file exists
+
+  // if not, 404
+
+  // generate jwt token
+  const token = "";
+
+  // return
+
+  res
+    .code(200)
+    .send({ pathname, token, filenameToken: `${pathname}?token=${token}` });
+});
+
+server.get("/file-signed/*", async (req: any, res: any) => {
+  const filepath = req.params["*"];
+  const token = req.query["token"];
+  res.send("ok");
 });
 
 (async () => {
-  console.log(JSON.stringify(process.env, null, 2));
-
   await applyMigrations();
 
   server.listen(5000, "0.0.0.0", (err: any, address: any) => {
