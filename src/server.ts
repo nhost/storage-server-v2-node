@@ -18,8 +18,6 @@ server.get("/healthz", (req: any, res: any) => {
 server.post("/upload", async (req: any, res: any) => {
   const data = await req.file();
 
-  console.log(req.headers);
-
   const { filename: originalFilename, mimetype, file } = data;
 
   // use specified filename from haders
@@ -40,8 +38,8 @@ server.post("/upload", async (req: any, res: any) => {
       },
     });
   } catch (error) {
-    console.log(error);
-    console.log("unable to insert file");
+    console.error(error);
+    return res.code(400).send("Unable to upload file");
   }
 
   const fileId = dbRes.insert_storage_files_one.id;
@@ -49,8 +47,6 @@ server.post("/upload", async (req: any, res: any) => {
   // upload to S3
   const pathname = `${fileId}/${fileName}`;
   const uploadResult = await uploadObject(pathname, file, mimetype);
-
-  console.log({ uploadResult });
 
   res.code(200).send({
     fileId,
@@ -76,9 +72,7 @@ server.get("/file/*", async (req: any, res: any) => {
 
 server.get("/generate-signed-url/*", async (req: any, res: any) => {
   const pathname = req.params["*"];
-  console.log({ pathname });
   const [fileId, fileName] = pathname.split("/");
-  console.log({ fileId, fileName });
 
   // see if file exists
   let dbRes: any;
@@ -87,8 +81,8 @@ server.get("/generate-signed-url/*", async (req: any, res: any) => {
       id: fileId,
     });
   } catch (error) {
-    console.log(error);
-    console.log("unable to insert file");
+    console.error(error);
+    return res.code(404).send("File not found");
   }
 
   // if not, 404
