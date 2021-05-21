@@ -10,7 +10,7 @@ Upload file
 
 Get file
 
-### `/generate-signed-url/<pathname>
+### `/generate-signed-url/<pathname>`
 
 Generate signed URL
 
