@@ -1,6 +1,5 @@
 import { migrate } from "postgres-migrations";
 import { Client } from "pg";
-require("dotenv").config();
 
 export async function applyMigrations(): Promise<void> {
   const dbConfig = {

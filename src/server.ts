@@ -1,18 +1,18 @@
 import fastify from "fastify";
 import { applyMigrations } from "./utils/migrations";
 import fastifyMultipart from "fastify-multipart";
-import { v4 as uuidv4 } from "uuid";
 
 import { uploadObject, downloadObject } from "./utils/s3";
 import { request } from "./utils/graphql-client";
-import { insertFile } from "./utils/graphql-queries";
+import { INSERT_FILE, GET_FILE } from "./utils/graphql-queries";
+import { verifyJWT, signJWT } from "./utils";
 
 const server = fastify({ trustProxy: true });
 
 server.register(fastifyMultipart);
 
-server.get("/healthz", (request: any, reply: any) => {
-  reply.code(200).send({ pong: "it worked 2!" });
+server.get("/healthz", (req: any, res: any) => {
+  res.code(200).send({ healthz: "ok" });
 });
 
 server.post("/upload", async (req: any, res: any) => {
@@ -31,7 +31,7 @@ server.post("/upload", async (req: any, res: any) => {
   // add to `storage.files`
   let dbRes: any;
   try {
-    dbRes = await request(insertFile, {
+    dbRes = await request(INSERT_FILE, {
       object: {
         name: fileName,
         mimetype,
@@ -52,17 +52,19 @@ server.post("/upload", async (req: any, res: any) => {
 
   console.log({ uploadResult });
 
-  res.code(200).send({ pathname, mimetype, size: fileSize });
+  res.code(200).send({
+    fileId,
+    fileName,
+    pathname,
+    fileMimetype: mimetype,
+    fileSize: fileSize,
+  });
 });
 server.get("/file/*", async (req: any, res: any) => {
   const pathname = req.params["*"];
 
-  console.log({ pathname });
-
   const object = await downloadObject(pathname);
 
-  console.log(object);
-  // res.set('Content-Length', headObject.ContentLength?.toString())
   res
     .code(200)
     .header("Content-Type", object.ContentType)
@@ -79,23 +81,55 @@ server.get("/generate-signed-url/*", async (req: any, res: any) => {
   console.log({ fileId, fileName });
 
   // see if file exists
+  let dbRes: any;
+  try {
+    dbRes = await request(GET_FILE, {
+      id: fileId,
+    });
+  } catch (error) {
+    console.log(error);
+    console.log("unable to insert file");
+  }
 
   // if not, 404
+  if (!dbRes) {
+    return res.code(404).send("file not found 2");
+  }
 
   // generate jwt token
-  const token = "";
+  const token = signJWT({ pathname }, 100);
 
   // return
-
   res
     .code(200)
     .send({ pathname, token, filenameToken: `${pathname}?token=${token}` });
 });
 
 server.get("/file-signed/*", async (req: any, res: any) => {
-  const filepath = req.params["*"];
+  const pathname = req.params["*"];
   const token = req.query["token"];
-  res.send("ok");
+
+  let jwtRes;
+  try {
+    jwtRes = verifyJWT(token);
+  } catch (error) {
+    return res.send(401).send("Link is no longer valid.");
+  }
+
+  //@ts-ignore
+  if (jwtRes.pathname !== pathname) {
+    return res.send(401).send("Incorrect token or pathname");
+  }
+
+  const object = await downloadObject(pathname);
+
+  res
+    .code(200)
+    .header("Content-Type", object.ContentType)
+    .header("Content-Length", object.ContentLength)
+    .header("Last-Modified", object.LastModified)
+    .header("ETag", object.ETag)
+    .send(object.Body);
 });
 
 (async () => {
