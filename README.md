@@ -1,5 +1,23 @@
 # hasura-storage
 
+## Endpoints
+
+### `/upload`
+
+Upload file
+
+### `/file/<pathname>`
+
+Get file
+
+### `/generate-signed-url/<pathname>
+
+Generate signed URL
+
+### `/file-signed/<pathname>?token=<token>`
+
+Get file using a signed URL
+
 ## Environment Variables
 
 - DATABASE_URL
