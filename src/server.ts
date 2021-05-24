@@ -1,5 +1,6 @@
 import fastify from "fastify";
 import { applyMigrations } from "./utils/migrations";
+import { applyMetadata } from "./utils/metadata";
 import fastifyMultipart from "fastify-multipart";
 
 import { uploadObject, downloadObject } from "./utils/s3";
@@ -140,6 +141,7 @@ server.get("/file-signed/*", async (req: any, res: any) => {
 
 (async () => {
   await applyMigrations();
+  await applyMetadata();
 
   server.listen(5000, "0.0.0.0", (err: any, address: any) => {
     if (err) {
