@@ -6,6 +6,7 @@ import { uploadObject, downloadObject } from "./utils/s3";
 import { request } from "./utils/graphql-client";
 import { INSERT_FILE, GET_FILE } from "./utils/graphql-queries";
 import { verifyJWT, signJWT } from "./utils";
+import { encrypt, decrypt } from "./utils/crypto";
 
 const server = fastify({ trustProxy: true });
 
@@ -90,30 +91,41 @@ server.get("/generate-signed-url/*", async (req: any, res: any) => {
     return res.code(404).send("file not found 2");
   }
 
+  // encrypt file id
+  const encryptedFileId = encodeURIComponent(encrypt(fileId));
+
+  const encryptedPathname = `${encryptedFileId}/${fileName}`;
+
   // generate jwt token
-  const token = signJWT({ pathname }, 100);
+  const token = signJWT({ encryptedPathname }, 100);
 
   // return
-  res
-    .code(200)
-    .send({ pathname, token, filenameToken: `${pathname}?token=${token}` });
+  res.code(200).send({
+    pathname: encryptedPathname,
+    token,
+    pathnameToken: `${encryptedPathname}?token=${token}`,
+  });
 });
 
 server.get("/file-signed/*", async (req: any, res: any) => {
-  const pathname = req.params["*"];
+  const pathnameRaw = req.params["*"];
   const token = req.query["token"];
+  const [encryptedFileIdEncoded, fileName] = pathnameRaw.split("/");
 
   let jwtRes;
   try {
     jwtRes = verifyJWT(token);
   } catch (error) {
-    return res.send(401).send("Link is no longer valid.");
+    return res.code(401).send("Link is no longer valid.");
   }
 
   //@ts-ignore
   if (jwtRes.pathname !== pathname) {
-    return res.send(401).send("Incorrect token or pathname");
+    return res.code(401).send("Incorrect token or pathname");
   }
+
+  const fileId = decrypt(decodeURIComponent(encryptedFileIdEncoded));
+  const pathname = `${fileId}/${fileName}`;
 
   const object = await downloadObject(pathname);
 
