@@ -6,7 +6,7 @@ import fastifyMultipart from "fastify-multipart";
 import { uploadObject, downloadObject } from "./utils/s3";
 import { request } from "./utils/graphql-client";
 import { INSERT_FILE, GET_FILE } from "./utils/graphql-queries";
-import { verifyJWT, signJWT } from "./utils";
+import { verifyJWT, signJWT, base64urlencode, base64urldecode } from "./utils";
 import { encrypt, decrypt } from "./utils/crypto";
 
 const server = fastify({ trustProxy: true });
@@ -93,12 +93,13 @@ server.get("/generate-signed-url/*", async (req: any, res: any) => {
   }
 
   // encrypt file id
-  const encryptedFileId = encodeURIComponent(encrypt(fileId));
+  const a = encrypt(fileId);
+  const encryptedFileId = base64urlencode(a);
 
   const encryptedPathname = `${encryptedFileId}/${fileName}`;
 
   // generate jwt token
-  const token = signJWT({ encryptedPathname }, 100);
+  const token = signJWT({ encryptedPathname }, 10000);
 
   // return
   res.code(200).send({
@@ -111,21 +112,23 @@ server.get("/generate-signed-url/*", async (req: any, res: any) => {
 server.get("/file-signed/*", async (req: any, res: any) => {
   const pathnameRaw = req.params["*"];
   const token = req.query["token"];
-  const [encryptedFileIdEncoded, fileName] = pathnameRaw.split("/");
+  let [encryptedFileIdEncoded, fileName] = pathnameRaw.split("/");
 
   let jwtRes;
   try {
     jwtRes = verifyJWT(token);
   } catch (error) {
+    console.log(error);
     return res.code(401).send("Link is no longer valid.");
   }
 
   //@ts-ignore
   if (jwtRes.pathname !== pathname) {
+    console.error("incorrect token or pathname");
     return res.code(401).send("Incorrect token or pathname");
   }
-
-  const fileId = decrypt(decodeURIComponent(encryptedFileIdEncoded));
+  const encryptedFileId = base64urldecode(encryptedFileIdEncoded);
+  const fileId = decrypt(encryptedFileId);
   const pathname = `${fileId}/${fileName}`;
 
   const object = await downloadObject(pathname);
