@@ -1,4 +1,4 @@
-from node:14-alpine
+FROM node:14-alpine
 
 ENV PGOPTIONS "-c search_path=storage"
 
